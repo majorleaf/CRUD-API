@@ -2,6 +2,7 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 const Database = require('./better-sqlite3');
+const db = require('./db.js');
 const app = express();
 const port = 8000;
 
