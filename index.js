@@ -1,6 +1,7 @@
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
+const Database = require('./better-sqlite3');
 const app = express();
 const port = 8000;
 
@@ -34,6 +35,7 @@ function resetTasks() {
 }
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
+const db = new Database('tasks.db', { verbose: console.log });
 
 app.get('/', (req, res) => {
     res.json({ 
