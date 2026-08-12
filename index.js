@@ -9,24 +9,7 @@ const port = 8000;
 app.use(express.json());
 
 
-const SEED_TASKS = [
-    {
-        id: 1,
-        title: "read a book",
-        done: false
-    },
-    {
-        id: 2, 
-        title: "trim flowers",
-        done: false,
-    },
 
-    {
-        id: 3,
-        title: "walk the dog",
-        done: false
-    }
-];
 
 const tasks = SEED_TASKS.map((task) => ({ ...task }));
 
@@ -36,7 +19,7 @@ function resetTasks() {
 }
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
-const db = new Database('tasks.db', { verbose: console.log });
+
 
 app.get('/', (req, res) => {
     res.json({ 
@@ -53,13 +36,14 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/tasks', (req, res) => {
+    const tasks = db.prepare('SELECT * FROM tasks').all();
     res.json({tasks})
 });
 
 app.get('/tasks/:id', (req, res) => {
     const id = Number(req.params.id);
     const task = tasks.find((t) => t.id === id);
-
+    const tasks = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
     if (!task) {
         return res.status(404).json({ error: `Task ${id} not found`})
     }

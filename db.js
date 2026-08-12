@@ -29,7 +29,24 @@ console.log('Database tasks.db is ready and "tasks" table is configured.');
     console.log('Seeding example tasks ');
 
    const insertTask = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
- 
+   const exampleTasks = [
+    {
+        id: 1,
+        title: "read a book",
+        done: 0
+    },
+    {
+        id: 2, 
+        title: "trim flowers",
+        done: 0,
+    },
+
+    {
+        id: 3,
+        title: "walk the dog",
+        done: 0
+    }
+];
 
 
  const insertMany = db.transaction((tasks) => {
