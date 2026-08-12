@@ -1,7 +1,7 @@
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
-const Database = require('./better-sqlite3');
+const Database = require('better-sqlite3');
 const db = require('./db.js');
 const app = express();
 const port = 8000;
@@ -11,12 +11,7 @@ app.use(express.json());
 
 
 
-const tasks = SEED_TASKS.map((task) => ({ ...task }));
 
-function resetTasks() {
-  tasks.length = 0;
-  tasks.push(...SEED_TASKS.map((task) => ({ ...task })));
-}
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
@@ -42,8 +37,7 @@ app.get('/tasks', (req, res) => {
 
 app.get('/tasks/:id', (req, res) => {
     const id = Number(req.params.id);
-    const task = tasks.find((t) => t.id === id);
-    const tasks = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
     if (!task) {
         return res.status(404).json({ error: `Task ${id} not found`})
     }
@@ -55,18 +49,21 @@ app.post('/tasks', (req, res) => {
     const { title } = req.body;
 
     if (title === undefined || title === null || String(title).trim() === '') {
-        return res,status(400).json({ error: 'title is required and cannot be empty'});
+        return res.status(400).json({ error: 'title is required and cannot be empty'});
     }
-    const id = tasks.length === 0 ? 1 : Math.max(...tasks.map((t) => t.id)) + 1;
     const task = { id, title: String(title).trim(), done: false };
-    tasks.push(task);
+    db.prepare('INSERT INTO tasks ( id, title, done) VALUES ( ?, ?, ?)').run(task.id, task.title, task.done);
     res.status(201).json(task);
 });
 
 // update and delete
 app.put('/tasks/:id', (req, res) => {
   const id = Number(req.params.id);
-  const task = tasks.find((t) => t.id === id);
+  const task = db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(
+    req.body.title ? String(req.body.title).trim() : undefined,
+    req.body.done !== undefined ? !!req.body.done : undefined,
+    id
+  );
 
   if (!task) {
     return res.status(404).json({ error: `Task ${id} not found` });
