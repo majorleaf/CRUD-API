@@ -10,9 +10,6 @@ app.use(express.json());
 
 
 
-
-
-
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
 
@@ -36,7 +33,7 @@ app.get('/tasks', (req, res) => {
 });
 
 app.get('/tasks/:id', (req, res) => {
-    const id = Number(req.params.id);
+    const id = req.params.id;
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
     if (!task) {
         return res.status(404).json({ error: `Task ${id} not found`})
@@ -44,57 +41,74 @@ app.get('/tasks/:id', (req, res) => {
     res.json(task);
 });
 
-// create 
 app.post('/tasks', (req, res) => {
-    const { title } = req.body;
+    const { title, done } = req.body;
 
-    if (title === undefined || title === null || String(title).trim() === '') {
-        return res.status(400).json({ error: 'title is required and cannot be empty'});
+    if (!title || String(title).trim() === '') {
+        return res.status(400).json({ error: 'title is required and cannot be empty' });
     }
-    const task = { id, title: String(title).trim(), done: false };
-    db.prepare('INSERT INTO tasks ( id, title, done) VALUES ( ?, ?, ?)').run(task.id, task.title, task.done);
-    res.status(201).json(task);
+
+    // default missing/undefined done to false -> 0
+    const doneValue = (done === true) ? 1 : 0;
+
+    const insertStmt = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
+    const info = insertStmt.run(String(title).trim(), doneValue);
+
+    const created = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(created);
 });
 
 // update and delete
 app.put('/tasks/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const task = db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(
-    req.body.title ? String(req.body.title).trim() : undefined,
-    req.body.done !== undefined ? !!req.body.done : undefined,
-    id
-  );
+    const id = req.params.id;
+    const { title, done } = req.body;
 
-  if (!task) {
-    return res.status(404).json({ error: `Task ${id} not found` });
-  }
-
-  const { title, done } = req.body ?? {};
-  const hasTitle = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'title');
-  const hasDone = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'done');
-
-  if (!hasTitle && !hasDone) {
-    return res.status(400).json({ error: 'request body must include title and/or done' });
-  }
-
-  if (hasTitle) {
-    if (title === null || String(title).trim() === '') {
-      return res.status(400).json({ error: 'title cannot be empty' });
+    // 1. Check if the task exists first
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    if (!existingTask) {
+        return res.status(404).json({ error: "Task not found" });
     }
-    task.title = String(title).trim();
-  }
 
-  if (hasDone) {
-    if (typeof done !== 'boolean') {
-      return res.status(400).json({ error: 'done must be a boolean' });
+    // 2. Prepare the updated values, keeping existing values if not provided in req.body
+    const updatedTitle = title !== undefined ? String(title).trim() : existingTask.title;
+
+    // Convert boolean true/false to SQLite's integer 1/0
+    let updatedDone = existingTask.done;
+    if (done !== undefined) {
+        updatedDone = (done === true || done === 'true' || done === 1) ? 1 : 0;
     }
-    task.done = done;
-  }
 
-  res.json(task);
+    // 3. Apply the same validation rules
+    if (updatedTitle === '') {
+        return res.status(400).json({ error: 'title cannot be empty' });
+    }
+
+    // 4. Update the task in the database
+    const updateStmt = db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?');
+    updateStmt.run(updatedTitle, updatedDone, id);
+
+    // 5. Fetch and return the updated task
+    const updatedTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    res.json(updatedTask);
 });
 
+// DELETE /tasks/:id - Remove a task
+app.delete('/tasks/:id', (req, res) => {
+    const id = req.params.id;
 
+    // Execute the delete query. .run() returns an object with a 'changes' property
+    // telling us how many rows were affected.
+    const deleteStmt = db.prepare('DELETE FROM tasks WHERE id = ?');
+    const info = deleteStmt.run(id);
+
+    // If 0 changes were made, the task didn't exist
+    if (info.changes === 0) {
+        return res.status(404).json({ error: "Task not found" });
+    }
+
+    // Send a 204 No Content response for a successful deletion
+    res.status(204).send();
+});
 
 app.listen(port, () => {
     console.log(`server running on port ${port}`);
