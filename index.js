@@ -41,6 +41,11 @@ app.get('/tasks/:id', (req, res) => {
     res.json(task);
 });
 
+app.get('/tasks', (req, res) => {
+    const tasks = db.prepare('SELECT * FROM tasks ORDER BY title COLLATE NOCASE ASC').all();
+    res.json({ tasks });
+});
+
 app.post('/tasks', (req, res) => {
     const { title, done } = req.body;
 
