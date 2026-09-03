@@ -44,7 +44,7 @@ app.get('/tasks/:id', async (req, res) => {
 
 
 
-app.post('/tasks', (req, res) => {
+app.post('/tasks', async (req, res) => {
     const { title, done } = req.body;
 
     if (!title || String(title).trim() === '') {
@@ -52,22 +52,25 @@ app.post('/tasks', (req, res) => {
     }
 
     // default missing/undefined done to false -> 0
-    const doneValue = (done === true) ? 1 : 0;
+    const doneValue = done === true;
+    
+    const result = await pool.query(
+       'INSERT INTO tasks(title, done) VALUES ($1, $2) RETURNING *',
+        [String(title).trim(), doneValue]
+    );
 
-    const insertStmt = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
-    const info = insertStmt.run(String(title).trim(), doneValue);
-
-    const created = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
-    res.status(201).json(created);
+    res.status(201).json(result.rows[0]);
 });
 
 // update and delete
-app.put('/tasks/:id', (req, res) => {
+app.put('/tasks/:id', async(req, res) => {
     const id = req.params.id;
     const { title, done } = req.body;
 
     // 1. Check if the task exists first
-    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    const existingResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    const existingTask = existingResult.rows[0];
+
     if (!existingTask) {
         return res.status(404).json({ error: "Task not found" });
     }
@@ -75,10 +78,10 @@ app.put('/tasks/:id', (req, res) => {
     // 2. Prepare the updated values, keeping existing values if not provided in req.body
     const updatedTitle = title !== undefined ? String(title).trim() : existingTask.title;
 
-    // Convert boolean true/false to SQLite's integer 1/0
+    
     let updatedDone = existingTask.done;
     if (done !== undefined) {
-        updatedDone = (done === true || done === 'true' || done === 1) ? 1 : 0;
+        updatedDone = (done === true || done === 'true' ); 
     }
 
     // 3. Apply the same validation rules
@@ -87,25 +90,26 @@ app.put('/tasks/:id', (req, res) => {
     }
 
     // 4. Update the task in the database
-    const updateStmt = db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?');
-    updateStmt.run(updatedTitle, updatedDone, id);
+    const updateResult = await pool.query(
+        'UPDATE tasks SET title = $1, done = $2 WHERE id = $3 RETURNING *',
+        [updatedTitle, updatedDone, id]
+    );
 
     // 5. Fetch and return the updated task
-    const updatedTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-    res.json(updatedTask);
+    
+    res.json(updateResult.rows[0]);
 });
 
 // DELETE /tasks/:id - Remove a task
-app.delete('/tasks/:id', (req, res) => {
+app.delete('/tasks/:id', async (req, res) => {
     const id = req.params.id;
 
     // Execute the delete query. .run() returns an object with a 'changes' property
     // telling us how many rows were affected.
-    const deleteStmt = db.prepare('DELETE FROM tasks WHERE id = ?');
-    const info = deleteStmt.run(id);
+    const result = await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
 
     // If 0 changes were made, the task didn't exist
-    if (info.changes === 0) {
+    if (result.rowCount === 0) {
         return res.status(404).json({ error: "Task not found" });
     }
 
