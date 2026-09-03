@@ -2,7 +2,7 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 const Database = require('better-sqlite3');
-const { initDb } = require('./db.js');
+const { pool, initDb } = require('./db.js');
 const app = express();
 const port = 8000;
 
@@ -27,24 +27,22 @@ app.get('/health', (req, res) => {
     });
 });
 
-app.get('/tasks', (req, res) => {
-    const tasks = db.prepare('SELECT * FROM tasks').all();
-    res.json({tasks})
+app.get('/tasks', async (req, res) => {
+    const result = await pool.query('SELECT * FROM tasks ORDER BY id');
+    res.json({ tasks: result.rows });
 });
 
-app.get('/tasks/:id', (req, res) => {
+app.get('/tasks/:id', async (req, res) => {
     const id = req.params.id;
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    const task = result.rows[0];
     if (!task) {
-        return res.status(404).json({ error: `Task ${id} not found`})
+        return res.status(404).json({ error: `Task ${id} not found` });
     }
     res.json(task);
 });
 
-app.get('/tasks', (req, res) => {
-    const tasks = db.prepare('SELECT * FROM tasks ORDER BY title COLLATE NOCASE ASC').all();
-    res.json({ tasks });
-});
+
 
 app.post('/tasks', (req, res) => {
     const { title, done } = req.body;
