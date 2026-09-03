@@ -1,197 +1,179 @@
-Task API
+# Task API
 
-A lightweight, RESTful Express.js API for managing a to-do list. This API uses better-sqlite3 for persistent storage, meaning your tasks are saved to a local SQLite database (tasks.db) and will safely survive server restarts.
+A lightweight, RESTful Express.js API for managing a to-do list.
 
-Prerequisites
+This project has gone through three storage stages:
+1. **In-memory** array (data lost on every restart)
+2. **SQLite** via `better-sqlite3` (a local `tasks.db` file — survives restarts, single file)
+3. **PostgreSQL in Docker** (current version) — a real database server, running in its own container, with the entire stack (app + database) started by a single command
 
-To run this project, you will need to have Node.js installed on your machine.
+Across all three, the API itself — every route, every status code, every response shape — stayed the same. Only the storage layer underneath changed.
 
-Setup & Installation
+## Why Postgres + Docker
 
-Initialize the project: Create a new directory, navigate into it, and initialize a new Node project.
+- **Postgres** is a real database server (not a file), the same kind of engine that runs production backends at scale.
+- **Docker** means nobody has to manually install Postgres, fight version mismatches, or configure it by hand — `docker compose up` gives every machine an identical, disposable copy of the database.
+- A named **volume** (`taskdata`) keeps the actual rows on disk, so they survive even a full `docker compose down && docker compose up` — not just an app restart, the *entire* stack restarting.
 
-mkdir task-api
-cd task-api
-npm init -y
+## Prerequisites
 
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine (Linux/WSL2) — you do **not** need Node.js or Postgres installed locally; both run inside containers.
 
-Install dependencies: Install Express, Swagger UI, and Better-SQLite3.
+## Setup & Run
 
-npm install express swagger-ui-express better-sqlite3
+1. Clone this repo.
+2. Copy the example environment file and adjust if needed:
+   ```
+   cp .env.example .env
+   ```
+3. Start the whole stack — app and database together:
+   ```
+   docker compose up
+   ```
+4. On first run, Postgres initializes, the `tasks` table is created automatically, and 3 example tasks are seeded. You'll see:
+   ```
+   [db] tasks table is empty - inserting seed tasks
+   server running on port 8000
+   ```
+5. The API is now live at `http://localhost:8000`.
 
+To stop everything: `Ctrl+C`, then `docker compose down` (your data stays in the volume — `docker compose up` again picks up right where you left off).
 
-Initialize the Database: Run the database file once to create the tasks.db file, configure the table, and seed the initial data.
+## Environment Variables
 
-node db.js
+See `.env.example`. Only one variable is required:
 
+| Variable | Description | Example |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection string | `postgres://postgres:dev@db:5432/tasks` |
 
-Start the server:
+Note: inside `docker compose`, the host is `db` (the service name in `compose.yaml`), not `localhost` — containers reach each other by service name on the compose network.
 
-node index.js
+## Base URL
 
+All endpoints are relative to: `http://localhost:8000`
 
-The console should display: server running on port 8000.
+## API Endpoints
 
-Base URL
+### General & System
 
-All endpoints are relative to: http://localhost:8000
+**GET /**
+Returns basic information about the API.
+Response: `200 OK` — `{"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}`
 
-API Endpoints
+**GET /health**
+Checks if the server is running.
+Response: `200 OK` — `{"status": "okay"}`
 
-1. General & System
+### Tasks
 
-GET /
+| Method | Path | Description | Success | Errors |
+|---|---|---|---|---|
+| GET | `/tasks` | List all tasks | 200 | — |
+| GET | `/tasks/:id` | Get one task | 200 | 404 if not found |
+| POST | `/tasks` | Create a task | 201 | 400 if title missing/empty |
+| PUT | `/tasks/:id` | Update a task (partial — title and/or done) | 200 | 404 if not found, 400 if invalid |
+| DELETE | `/tasks/:id` | Delete a task | 204 | 404 if not found |
 
-Description: Returns basic information about the API.
+**Example — GET /tasks**
+```
+curl -i http://localhost:8000/tasks
 
-Response: 200 OK
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
 
-Example: {"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}
+{"tasks":[{"id":1,"title":"read a book","done":false},{"id":2,"title":"trim flowers","done":false},{"id":3,"title":"walk the dog","done":false}]}
+```
 
-GET /health
+## Data Model
 
-Description: Checks if the server is running.
+The task object, as stored in Postgres and returned by the API:
 
-Response: 200 OK
-
-Example: {"status": "okay"}
-
-2. Tasks
-
-GET /tasks
-
-Description: Retrieves the full list of tasks from the database.
-
-Response: 200 OK
-
-Example:
-
-{
-  "tasks": [
-    { "id": 1, "title": "read a book", "done": 0, "created_at": "2023-10-25 12:00:00" }
-  ]
-}
-
-  GET /tasks 
-   
-   Description: REtrieves all the tasks alphabetically 
-
-GET /tasks/:id
-
-Description: Retrieves a specific task by its numeric ID.
-
-Response: 200 OK (if found) or 404 Not Found (if invalid ID).
-
-POST /tasks
-
-Description: Creates a new task. The done status defaults to false (0). The ID and created_at timestamp are generated automatically by SQLite.
-
-Body (JSON): Requires a title (string).
-
-{
-  "title": "Buy groceries"
-}
-
-
-Response: 201 Created
-
-Errors: 400 Bad Request if the title is missing or empty.
-
-PUT /tasks/:id
-
-Description: Updates an existing task's title, completion status, or both.
-
-Body (JSON): At least one of title or done must be provided.
-
-{
-  "title": "Buy organic groceries",
-  "done": true
-}
-
-
-Response: 200 OK with the updated task object.
-
-Errors: 404 Not Found if the ID doesn't exist. 400 Bad Request if no valid fields are provided, if title is empty, or if done is not a boolean.
-
-DELETE /tasks/:id
-
-Description: Permanently deletes a task from the database.
-
-Response: 204 No Content
-
-Errors: 404 Not Found if the ID doesn't exist.
-
-Data Model
-
-The task object follows this structure in the SQLite database:
-
+```json
 {
   "id": 1,
   "title": "String",
-  "done": 0,
-  "created_at": "YYYY-MM-DD HH:MM:SS"
+  "done": false
 }
+```
 
+Unlike the earlier SQLite version, `done` is a genuine Postgres `boolean` — it returns as real `true`/`false`, not `0`/`1`.
 
-(Note: SQLite stores booleans as integers, so done will return as 0 for false and 1 for true).
+```sql
+CREATE TABLE IF NOT EXISTS tasks (
+  id serial PRIMARY KEY,
+  title text NOT NULL,
+  done boolean NOT NULL DEFAULT false
+);
+```
 
-AI VS ME
+## Proving persistence
+
+To confirm data survives a full stack restart (not just an app restart):
+
+1. `docker compose up` — note the seeded tasks via `GET /tasks`
+2. Create an extra task via `POST /tasks`
+3. `Ctrl+C`, then `docker compose down`
+4. `docker compose up` again
+5. `GET /tasks` — the extra task is still there, because it lives in the `taskdata` volume, not inside the container itself
+
+## Database screenshot
+
+_Add a screenshot here of `psql` showing `\dt` and a `SELECT * FROM tasks;` with your seeded rows._
+
+## Architecture note
+
+The database connection and all SQL live in `db.js`. The Express routes in `index.js` call `pool.query(...)` directly for now — a dedicated repository/service layer (fully separating routes from SQL) is a later refinement, not part of this stage.
+
+---
+
+# AI VS ME
 
 This document compares the Express.js Task API code provided by the user against the version generated by the AI, answering three critical questions about the AI's performance, prompt adherence, and assumptions.
 
-1. What did the AI do better — and do you understand its version well enough to explain it?
+## 1. What did the AI do better — and do you understand its version well enough to explain it?
 
 The AI improved upon the provided code in a few structural and semantic ways, though both versions are fundamentally very similar (as the AI's version was largely derived from the initial context).
 
-What the AI did better:
+**What the AI did better:**
 
-Error Handling in POST: In the user's provided code, there is a syntax error in the POST /tasks route: return res,status(400).json(...). The comma instead of a period will cause a runtime crash if a user submits a blank title. The AI version correctly uses res.status(400).
+- **Error Handling in POST:** In the user's provided code, there is a syntax error in the `POST /tasks` route: `return res,status(400).json(...)`. The comma instead of a period will cause a runtime crash if a user submits a blank title. The AI version correctly uses `res.status(400)`.
 
-DELETE Route: The user's provided code is missing the DELETE /tasks/:id endpoint entirely, despite the comment // update and delete appearing above the PUT route. The AI version includes a fully functional DELETE endpoint using tasks.findIndex() and tasks.splice().
+- **DELETE Route:** The user's provided code is missing the `DELETE /tasks/:id` endpoint entirely, despite the comment `// update and delete` appearing above the `PUT` route. The AI version includes a fully functional DELETE endpoint using `tasks.findIndex()` and `tasks.splice()`.
 
-Port Configuration: The AI used port 3000, which is the industry standard default for Node/Express apps, whereas the user code used 8000. (Neither is "wrong," but 3000 is more conventional).
+- **Port Configuration:** The AI used port 3000, which is the industry standard default for Node/Express apps, whereas the user code used 8000. (Neither is "wrong," but 3000 is more conventional.)
 
-Code Organization: The AI utilized comment blocks (e.g., // 1. GET / - General API Info) to distinctly separate the routes, making the file slightly easier to read and maintain.
+- **Code Organization:** The AI utilized comment blocks (e.g., `// 1. GET / - General API Info`) to distinctly separate the routes, making the file slightly easier to read and maintain.
 
-Explaining the AI's Version:
+**Explaining the AI's Version:**
 Yes, the AI's version is clear. It follows standard Express RESTful patterns:
 
-Middleware: app.use(express.json()) intercepts requests to parse JSON bodies.
+- **Middleware:** `app.use(express.json())` intercepts requests to parse JSON bodies.
+- **In-Memory Store:** It maintains a mutable `tasks` array.
+- **CRUD Operations:** It maps HTTP verbs (GET, POST, PUT, DELETE) to specific array manipulation methods (`find`, `push`, direct property assignment, `splice`).
+- **Status Codes:** It returns appropriate HTTP status codes (201 for created, 204 for deleted, 404 for not found, 400 for bad input).
 
-In-Memory Store: It maintains a mutable tasks array.
+## 2. What did it get wrong or quietly ignore from your prompt?
 
-CRUD Operations: It maps HTTP verbs (GET, POST, PUT, DELETE) to specific array manipulation methods (find, push, direct property assignment, splice).
+Context: Based on the prompt "build a crud api, that has an in memory data .. ..with swagger ui using nodejs" followed by "tasks, pls".
 
-Status Codes: It returns appropriate HTTP status codes (201 for created, 204 for deleted, 404 for not found, 400 for bad input).
+- **The Missing Endpoints:** When generating the initial "Tasks" version, the AI quietly ignored/removed the `/stats` and `/reset` endpoints that were present in the very first iteration of the code (the learning exercise version). Because the prompt just asked for a "crud api" for "tasks", the AI stripped it down to strict CRUD operations, losing the utility functions from the user's earlier context.
 
-2. What did it get wrong or quietly ignore from your prompt?
+- **The User's `resetTasks()` Function:** In the user's newly provided code snippet, they explicitly included the `SEED_TASKS` array and the `resetTasks()` function. However, the user's code did not include the `POST /reset` endpoint to actually call that function. The AI, in its generated version, completely removed `SEED_TASKS` and `resetTasks()` because they weren't being used by any active routes.
 
-Context: Based on the prompt "build a crud api , that has an in memory data .. ..with swagger ui using nodejs" followed by "tasks, pls".
+## 3. What did your prompt forget to specify — and what did the AI silently decide for you?
 
-The Missing Endpoints: When generating the initial "Tasks" version, the AI quietly ignored/removed the /stats and /reset endpoints that were present in the very first iteration of the code (the learning exercise version). Because the prompt just asked for a "crud api" for "tasks", the AI stripped it down to strict CRUD operations, losing the utility functions from the user's earlier context.
+**What the prompt forgot to specify:**
 
-The User's resetTasks() Function: In the user's newly provided code snippet, they explicitly included the SEED_TASKS array and the resetTasks() function. However, the user's code did not include the POST /reset endpoint to actually call that function. The AI, in its generated version, completely removed SEED_TASKS and resetTasks() because they weren't being used by any active routes.
+- **The Schema:** The prompt asked for "tasks" but didn't define what a task looks like.
+- **Validation Rules:** It didn't specify what happens if someone sends a task without a title, or tries to update a task that doesn't exist.
+- **The Port:** It didn't specify which port the server should run on.
+- **The specific Swagger setup:** It asked for "swagger ui" but didn't specify whether to use JSDoc comments inline or an external `openapi.json` file.
 
-3. What did your prompt forget to specify — and what did the AI silently decide for you?
+**What the AI silently decided:**
 
-What the prompt forgot to specify:
-
-The Schema: The prompt asked for "tasks" but didn't define what a task looks like.
-
-Validation Rules: It didn't specify what happens if someone sends a task without a title, or tries to update a task that doesn't exist.
-
-The Port: It didn't specify which port the server should run on.
-
-The specific Swagger setup: It asked for "swagger ui" but didn't specify whether to use JSDoc comments inline or an external openapi.json file.
-
-What the AI silently decided:
-
-The Data Model: The AI decided a task consists of an id (integer), title (string), and done (boolean).
-
-Validation Logic: The AI decided that title is mandatory for creation and cannot be an empty string, returning a 400 Bad Request if violated. It also decided done defaults to false.
-
-Update Logic (PUT vs PATCH): The AI implemented the PUT route to behave more like a PATCH route—allowing partial updates (e.g., updating just the title without needing to send the done status). A strict PUT usually requires replacing the entire object.
-
-Documentation Architecture: The AI decided to separate the documentation into a distinct openapi.json file rather than using inline swagger-jsdoc comments, which keeps the index.js file much cleaner.
-
-Port: The AI defaulted to port 3000.
+- **The Data Model:** The AI decided a task consists of an `id` (integer), `title` (string), and `done` (boolean).
+- **Validation Logic:** The AI decided that `title` is mandatory for creation and cannot be an empty string, returning a 400 Bad Request if violated. It also decided `done` defaults to `false`.
+- **Update Logic (PUT vs PATCH):** The AI implemented the PUT route to behave more like a PATCH route—allowing partial updates (e.g., updating just the title without needing to send the `done` status). A strict PUT usually requires replacing the entire object.
+- **Documentation Architecture:** The AI decided to separate the documentation into a distinct `openapi.json` file rather than using inline swagger-jsdoc comments, which keeps the `index.js` file much cleaner.
+- **Port:** The AI defaulted to port 3000.
