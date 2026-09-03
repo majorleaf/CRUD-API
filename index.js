@@ -2,7 +2,7 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 const Database = require('better-sqlite3');
-const db = require('./db.js');
+const { initDb } = require('./db.js');
 const app = express();
 const port = 8000;
 
@@ -115,6 +115,14 @@ app.delete('/tasks/:id', (req, res) => {
     res.status(204).send();
 });
 
-app.listen(port, () => {
+
+initDb()
+ .then(() => {
+    app.listen(port, () => {
     console.log(`server running on port ${port}`);
-});
+    });
+ })
+  .catch((error) => {
+    console.log('Failed to initialize database:', error);
+    process.exit(1);
+  })
