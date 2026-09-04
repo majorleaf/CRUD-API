@@ -43,7 +43,6 @@ app.get('/tasks/:id', async (req, res) => {
 });
 
 
-
 app.post('/tasks', async (req, res) => {
     const { title, done } = req.body;
 
@@ -115,6 +114,22 @@ app.delete('/tasks/:id', async (req, res) => {
 
     // Send a 204 No Content response for a successful deletion
     res.status(204).send();
+});
+
+app.post('.auth/signup', async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ error: 'email and password are required'});
+
+    }
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+
+    if (error) {
+        return res.status(400).json({ error: error.message });
+    }
+    res.status(201).json( data.user );
 });
 
 
