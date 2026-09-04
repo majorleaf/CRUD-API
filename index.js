@@ -2,6 +2,7 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 const { pool, initDb } = require('./db.js');
+const supabase = require('./supabaseClient.js');
 const app = express();
 const port = 8000;
 
@@ -120,7 +121,7 @@ app.delete('/tasks/:id', async (req, res) => {
 initDb()
  .then(() => {
     app.listen(port, () => {
-    console.log(`server running on port ${port}`);
+    console.log(`server running on port ${port} and connected to supabase`);
     });
  })
   .catch((error) => {
