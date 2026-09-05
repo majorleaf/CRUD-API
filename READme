@@ -121,7 +121,6 @@ The database connection and all SQL live in `db.js`. The Express routes in `inde
 
 ![Successful authorized request to /protected/profile](screenshots/swagger-protected-profile.png)
 
-
 ## Proving persistence (from the Postgres stage)
 
 To confirm data survives a full stack restart (not just an app restart):
