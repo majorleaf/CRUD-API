@@ -117,7 +117,10 @@ The database connection and all SQL live in `db.js`. The Express routes in `inde
 
 `http://localhost:8000/docs` shows a lock icon next to every protected route. Click **Authorize**, paste a raw access token (no need to type "Bearer", Swagger adds that automatically), and use **Try it out** to test protected routes directly from the browser.
 
-_Add your Swagger UI screenshot here, showing the lock icons and a successful authorized request to `/protected/profile`._
+![Swagger showing lock icons on protected routes](screenshots/swagger-lock-icons.png)
+
+![Successful authorized request to /protected/profile](screenshots/swagger-protected-profile.png)
+
 
 ## Proving persistence (from the Postgres stage)
 
@@ -131,7 +134,7 @@ To confirm data survives a full stack restart (not just an app restart):
 
 ## Database screenshot
 
-_Add a screenshot here of `psql` showing `\dt` and a `SELECT * FROM tasks;` with your seeded rows._
+![Postgres tasks table via psql](screenshots/db-tasks-table.png)
 
 ---
 
