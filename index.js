@@ -156,15 +156,28 @@ app.get('/public/info', (req, res) => {
     res.status(200).json({ message: 'Welcome stranger! This info is public.'});        
 });
 
-app.get('/protected/profile', (req, res) => {
+app.get('/protected/profile', async (req, res) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] === '') {
         return res.status(401).json({ error: 'Access token required'});
     }
+
+    const token = authHeader.split(' ')[1];
+
+    const { data, error } = await supabase.auth.getUser(token);
+
+    if (error || !data.user) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
     // Token to be verified against supabase later
-    res.status(200).json({ message: 'Token present (not yet verified)' });
+    res.status(200).json({ 
+        id: data.user.id,
+        email: data.user.email,
+        created_at: data.user.created_at,
+     });
 });
+
 
 initDb()
  .then(() => {
