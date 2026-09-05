@@ -152,6 +152,20 @@ app.post('/auth/login', async (req, res) => {
     });
 });
 
+app.get('/public/info', (req, res) => {
+    res.status(200).json({ message: 'Welcome stranger! This info is public.'});        
+});
+
+app.get('/protected/profile', (req, res) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] === '') {
+        return res.status(401).json({ error: 'Access token required'});
+    }
+    // Token to be verified against supabase later
+    res.status(200).json({ message: 'Token present (not yet verified)' });
+});
+
 initDb()
  .then(() => {
     app.listen(port, () => {
