@@ -3,6 +3,7 @@ const swaggerUi = require('swagger-ui-express');
 const openapi = require('./openapi.json');
 const { pool, initDb } = require('./db.js');
 const supabase = require('./supabaseClient.js');
+const requireAuth = require('./authMiddleware.js');
 const app = express();
 const port = 8000;
 
@@ -152,30 +153,36 @@ app.post('/auth/login', async (req, res) => {
     });
 });
 
+//GET /public/info
 app.get('/public/info', (req, res) => {
     res.status(200).json({ message: 'Welcome stranger! This info is public.'});        
 });
 
-app.get('/protected/profile', async (req, res) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] === '') {
-        return res.status(401).json({ error: 'Access token required'});
-    }
-
-    const token = authHeader.split(' ')[1];
-
-    const { data, error } = await supabase.auth.getUser(token);
-
-    if (error || !data.user) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-    // Token to be verified against supabase later
+//GET /protected/profile
+app.get('/protected/profile',requireAuth, async (req, res) => {
     res.status(200).json({ 
-        id: data.user.id,
-        email: data.user.email,
-        created_at: data.user.created_at,
+        id: req.user.id,
+        email: req.user.email,
+        created_at: req.user.created_at,
      });
+});
+
+app.get('/protected/dashboard', requireAuth, async (req, res) => {
+    res.status(200).json({
+        message: `Welcome to your dashboard, ${req.user.email}`,
+    });
+});
+
+
+//  logout route  POST  /auth/logout
+app.post('/auth/logout', requireAuth, async (req, res) => {
+    const { error } = await supabase.auth.signOut(req.token);
+
+    if (error) {
+        return res.status(400).json({ error: error.message})
+    }
+    
+    res.status(204).send();
 });
 
 
