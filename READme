@@ -1,53 +1,57 @@
 # Task API
 
-A lightweight, RESTful Express.js API for managing a to-do list.
+A lightweight, RESTful Express.js API for managing a to-do list, secured with Supabase-backed authentication.
 
-This project has gone through three storage stages:
+This project has gone through four stages:
 1. **In-memory** array (data lost on every restart)
 2. **SQLite** via `better-sqlite3` (a local `tasks.db` file — survives restarts, single file)
-3. **PostgreSQL in Docker** (current version) — a real database server, running in its own container, with the entire stack (app + database) started by a single command
+3. **PostgreSQL in Docker** — a real database server, running in its own container, with the entire stack (app + database) started by a single command
+4. **Authentication** (current version) — Supabase Auth handles sign up, log in, and log out, issuing JWTs that protect specific routes
 
-Across all three, the API itself — every route, every status code, every response shape — stayed the same. Only the storage layer underneath changed.
+Across all four stages, the core task CRUD routes — every path, every status code, every response shape — stayed the same. Only the storage layer and, now, the security layer changed underneath them.
 
-## Why Postgres + Docker
+## Why Supabase Auth
 
-- **Postgres** is a real database server (not a file), the same kind of engine that runs production backends at scale.
-- **Docker** means nobody has to manually install Postgres, fight version mismatches, or configure it by hand — `docker compose up` gives every machine an identical, disposable copy of the database.
-- A named **volume** (`taskdata`) keeps the actual rows on disk, so they survive even a full `docker compose down && docker compose up` — not just an app restart, the *entire* stack restarting.
+Instead of writing password hashing, token signing, and session management by hand (all of which are easy to get subtly wrong and risky to get wrong at all), this project uses Supabase as an **Identity Provider**. The client sends credentials directly to Supabase; Supabase returns a signed **JWT (JSON Web Token)**; the client then presents that token to this API on every request that needs it; this server verifies the token with Supabase before letting the request through. The server never stores or even sees a raw password.
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine (Linux/WSL2) — you do **not** need Node.js or Postgres installed locally; both run inside containers.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine (Linux/WSL2) for Postgres — you do **not** need Postgres installed locally, it runs in a container.
+- Node.js, for running the API itself.
+- A free [Supabase](https://supabase.com) project.
 
 ## Setup & Run
 
 1. Clone this repo.
-2. Copy the example environment file and adjust if needed:
+2. Copy the example environment file and fill in your own values:
    ```
    cp .env.example .env
    ```
-3. Start the whole stack — app and database together:
+3. Start Postgres (via Docker) and the API. For local development:
    ```
-   docker compose up
+   docker start taskdb        # or: docker run ... (see .env.example / Docker guide for the full command)
+   npm install
+   node index.js
    ```
-4. On first run, Postgres initializes, the `tasks` table is created automatically, and 3 example tasks are seeded. You'll see:
+   You'll see:
    ```
-   [db] tasks table is empty - inserting seed tasks
-   server running on port 8000
+   [db] tasks table already has N row(s) - skipping seed
+   server running on port 8000 and connected to supabase
    ```
-5. The API is now live at `http://localhost:8000`.
-
-To stop everything: `Ctrl+C`, then `docker compose down` (your data stays in the volume — `docker compose up` again picks up right where you left off).
+4. The API is live at `http://localhost:8000`. Interactive docs (with auth support) are at `http://localhost:8000/docs`.
 
 ## Environment Variables
 
-See `.env.example`. Only one variable is required:
+See `.env.example` for the full list. All are required:
 
 | Variable | Description | Example |
 |---|---|---|
-| `DATABASE_URL` | Postgres connection string | `postgres://postgres:dev@db:5432/tasks` |
+| `DATABASE_URL` | Postgres connection string | `postgres://postgres:dev@localhost:5432/tasks` |
+| `SUPABASE_URL` | Your Supabase project URL | `https://xxxxx.supabase.co` |
+| `SUPABASE_KEY` | Your Supabase **publishable** key (safe for client-side/low-privilege use — not the secret key) | `sb_publishable_...` |
+| `PORT` | Port the Express server listens on | `8000` |
 
-Note: inside `docker compose`, the host is `db` (the service name in `compose.yaml`), not `localhost` — containers reach each other by service name on the compose network.
+Note: `DATABASE_URL` differs depending on how you run the app — `localhost` for plain `node index.js`, or the service name `db` when running via `docker compose up`.
 
 ## Base URL
 
@@ -57,57 +61,65 @@ All endpoints are relative to: `http://localhost:8000`
 
 ### General & System
 
-**GET /**
-Returns basic information about the API.
-Response: `200 OK` — `{"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}`
-
-**GET /health**
-Checks if the server is running.
-Response: `200 OK` — `{"status": "okay"}`
+| Method | Path | Description | Auth required? |
+|---|---|---|---|
+| GET | `/` | Basic API info | No |
+| GET | `/health` | Server health check | No |
+| GET | `/public/info` | Public, unprotected sample data | No |
 
 ### Tasks
 
-| Method | Path | Description | Success | Errors |
-|---|---|---|---|---|
-| GET | `/tasks` | List all tasks | 200 | — |
-| GET | `/tasks/:id` | Get one task | 200 | 404 if not found |
-| POST | `/tasks` | Create a task | 201 | 400 if title missing/empty |
-| PUT | `/tasks/:id` | Update a task (partial — title and/or done) | 200 | 404 if not found, 400 if invalid |
-| DELETE | `/tasks/:id` | Delete a task | 204 | 404 if not found |
+| Method | Path | Description | Success | Errors | Auth required? |
+|---|---|---|---|---|---|
+| GET | `/tasks` | List all tasks | 200 | — | No |
+| GET | `/tasks/:id` | Get one task | 200 | 404 if not found | No |
+| POST | `/tasks` | Create a task | 201 | 400 if title missing/empty | No |
+| PUT | `/tasks/:id` | Update a task (partial) | 200 | 404 if not found, 400 if invalid | No |
+| DELETE | `/tasks/:id` | Delete a task | 204 | 404 if not found | No |
 
-**Example — GET /tasks**
+### Authentication
+
+| Method | Path | Description | Success | Errors | Auth required? |
+|---|---|---|---|---|---|
+| POST | `/auth/signup` | Create a new user account | 201 | 400 if email/password missing or invalid | No |
+| POST | `/auth/login` | Log in, returns access & refresh tokens | 200 | 400 if fields missing, 401 if credentials invalid | No |
+| POST | `/auth/logout` | Ends the current session | 204 | 401 if token missing/invalid | **Yes** |
+
+### Protected
+
+| Method | Path | Description | Success | Errors | Auth required? |
+|---|---|---|---|---|---|
+| GET | `/protected/profile` | Returns the authenticated user's id, email, and creation date | 200 | 401 if token missing, invalid, or expired | **Yes** |
+| GET | `/protected/dashboard` | Sample second protected route, demonstrating the same reusable auth middleware | 200 | 401 if token missing, invalid, or expired | **Yes** |
+
+Protected routes expect: `Authorization: Bearer <access_token>`
+
+**Example — signup, login, then a protected request**
 ```
-curl -i http://localhost:8000/tasks
+curl -i -X POST http://localhost:8000/auth/signup -H "Content-Type: application/json" -d '{"email":"you@example.com","password":"yourpassword"}'
 
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
+curl -i -X POST http://localhost:8000/auth/login -H "Content-Type: application/json" -d '{"email":"you@example.com","password":"yourpassword"}'
+# -> returns { "access_token": "...", "refresh_token": "...", "user": {...} }
 
-{"tasks":[{"id":1,"title":"read a book","done":false},{"id":2,"title":"trim flowers","done":false},{"id":3,"title":"walk the dog","done":false}]}
-```
-
-## Data Model
-
-The task object, as stored in Postgres and returned by the API:
-
-```json
-{
-  "id": 1,
-  "title": "String",
-  "done": false
-}
-```
-
-Unlike the earlier SQLite version, `done` is a genuine Postgres `boolean` — it returns as real `true`/`false`, not `0`/`1`.
-
-```sql
-CREATE TABLE IF NOT EXISTS tasks (
-  id serial PRIMARY KEY,
-  title text NOT NULL,
-  done boolean NOT NULL DEFAULT false
-);
+curl -i http://localhost:8000/protected/profile -H "Authorization: Bearer <paste_access_token_here>"
+# -> 200 { "id": "...", "email": "you@example.com", "created_at": "..." }
 ```
 
-## Proving persistence
+Access tokens expire after a period (commonly 1 hour on Supabase's defaults) — logging in again issues a fresh one.
+
+## Architecture note
+
+All token verification logic lives in a single reusable middleware, `authMiddleware.js`, applied to any route that needs protecting (currently `/auth/logout`, `/protected/profile`, `/protected/dashboard`). Route handlers themselves stay focused on their actual logic — they never re-implement token checking. The Supabase client itself is initialized once, in `supabaseClient.js`, and imported wherever needed (`index.js`, `authMiddleware.js`) rather than recreated per file.
+
+The database connection and all SQL live in `db.js`. The Express routes in `index.js` call `pool.query(...)` directly for now — a dedicated repository/service layer (fully separating routes from SQL) is a later refinement, not part of this stage.
+
+## Swagger UI & Authorization
+
+`http://localhost:8000/docs` shows a lock icon next to every protected route. Click **Authorize**, paste a raw access token (no need to type "Bearer", Swagger adds that automatically), and use **Try it out** to test protected routes directly from the browser.
+
+_Add your Swagger UI screenshot here, showing the lock icons and a successful authorized request to `/protected/profile`._
+
+## Proving persistence (from the Postgres stage)
 
 To confirm data survives a full stack restart (not just an app restart):
 
@@ -120,10 +132,6 @@ To confirm data survives a full stack restart (not just an app restart):
 ## Database screenshot
 
 _Add a screenshot here of `psql` showing `\dt` and a `SELECT * FROM tasks;` with your seeded rows._
-
-## Architecture note
-
-The database connection and all SQL live in `db.js`. The Express routes in `index.js` call `pool.query(...)` directly for now — a dedicated repository/service layer (fully separating routes from SQL) is a later refinement, not part of this stage.
 
 ---
 
