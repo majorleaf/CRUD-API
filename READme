@@ -2,6 +2,8 @@
 
 A lightweight, RESTful Express.js API for managing a to-do list, secured with Supabase-backed authentication.
 
+📚 New to this project? Read the [step-by-step learning docs](./docs/README.md) — from in-memory storage through SQLite, Postgres/Docker, and Supabase auth.
+
 This project has gone through four stages:
 1. **In-memory** array (data lost on every restart)
 2. **SQLite** via `better-sqlite3` (a local `tasks.db` file — survives restarts, single file)
